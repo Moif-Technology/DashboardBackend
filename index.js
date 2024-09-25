@@ -1,15 +1,15 @@
-import express from "express";
 import cors from "cors";
+import express from "express";
 import {
   connectToCompanyDetails,
   connectToDashboard,
 } from "./config/dbConfig.js";
 
-import salesRoutes from "./routes/salesRoutes.js";
+import counterRoutes from "./routes/counterRoute.js";
 import customerRoute from "./routes/customerRoute.js";
 import loginRoute from "./routes/loginRoute.js";
-import counterRoutes from "./routes/counterRoute.js";
 import reportRoutes from "./routes/reportRoute.js";
+import salesRoutes from "./routes/salesRoutes.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -17,6 +17,7 @@ const port = process.env.PORT || 5000;
 app.use(
   cors({
     origin: "*", // Allow all origins for testing purposes
+    // origin: "https://posdashb.netlify.app/", // Allow all origins for testing purposes
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
