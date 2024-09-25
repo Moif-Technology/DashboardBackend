@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 const JWT_SECRET = '12345';
 
 export const generateToken = (payload) => {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' }); // Token valid for 24 hours
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' }); // Token valid for 24 hours
 };
 
 // export const verifyToken = (token) => {
