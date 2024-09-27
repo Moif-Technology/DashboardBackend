@@ -1,12 +1,12 @@
 import mssql from "mssql";
+import { verifyToken } from "../config/auth.js";
 import {
   connectToCompanyDetails,
   connectToDashboard,
 } from "../config/dbConfig.js";
-import { verifyToken } from "../config/auth.js";
 
 // Function to fetch dbSchemaName, stationId, branchId, and branchName from the token
- export const getDbSchemaNameFromToken = (req) => {
+export const getDbSchemaNameFromToken = (req) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
     throw new Error("Token not provided");
@@ -14,7 +14,6 @@ import { verifyToken } from "../config/auth.js";
 
   // Decode the token and log the output
   const decodedToken = verifyToken(token);
-
 
   return {
     dbSchemaName: decodedToken.DbSchemaName,
@@ -45,9 +44,9 @@ export const checkExpiryStatus = (req) => {
     const decodedToken = verifyToken(token);
 
     const expiryStatus = decodedToken.ExpiryStatus;
-    
+
     const expiryDate = new Date(decodedToken.ExpiryDate);
-  
+
     const currentDate = new Date();
 
     if (expiryStatus === 1 || expiryDate < currentDate) {
@@ -62,85 +61,96 @@ export const checkExpiryStatus = (req) => {
 };
 
 export const getBranches = async (req, res) => {
-    try {
-      console.log("Controller initiated");
-  
-      // Extract relevant details from the token
-      const { CompanyID, systemRoleId: role, branchId, branchName } = getDbSchemaNameFromToken(req);
-      console.log("Extracted from token:", { CompanyID, role, branchId, branchName });
-  
-      if (!CompanyID) {
-        console.log("Company ID is missing in the token");
-        return res.status(400).json({ message: "Company ID not found in token" });
-      }
-  
-      const systemRoleId = parseInt(role); // Ensure systemRoleId is an integer
-  
-      if (isNaN(systemRoleId)) {
-        console.log("System Role ID is invalid or missing");
-        return res.status(400).json({ message: "System Role ID is invalid" });
-      }
-  
-      // Connect to the CompanyDetails database
-      const companyDetailsPool = await connectToCompanyDetails();
-      console.log("Database connection successful");
-  
-      const request = companyDetailsPool.request();
-  
-      let branchesQuery;
-      let queryParams = { CompanyID };
-  
-      if (systemRoleId === 1) {
-        console.log("System Role is 1: Fetching all branches");
-        // If systemRoleId is 1, fetch all branches
-        branchesQuery = `
+  try {
+    console.log("Controller initiated");
+
+    // Extract relevant details from the token
+    const {
+      CompanyID,
+      systemRoleId: role,
+      branchId,
+      branchName,
+    } = getDbSchemaNameFromToken(req);
+    console.log("Extracted from token:", {
+      CompanyID,
+      role,
+      branchId,
+      branchName,
+    });
+
+    if (!CompanyID) {
+      console.log("Company ID is missing in the token");
+      return res.status(400).json({ message: "Company ID not found in token" });
+    }
+
+    const systemRoleId = parseInt(role); // Ensure systemRoleId is an integer
+
+    if (isNaN(systemRoleId)) {
+      console.log("System Role ID is invalid or missing");
+      return res.status(400).json({ message: "System Role ID is invalid" });
+    }
+
+    // Connect to the CompanyDetails database
+    const companyDetailsPool = await connectToCompanyDetails();
+    console.log("Database connection successful");
+
+    const request = companyDetailsPool.request();
+
+    let branchesQuery;
+    let queryParams = { CompanyID };
+
+    if (systemRoleId === 1) {
+      console.log("System Role is 1: Fetching all branches");
+      // If systemRoleId is 1, fetch all branches
+      branchesQuery = `
           SELECT BranchID, BranchName 
           FROM DashBoardCompanyDetails.dbo.Branch_Log 
           WHERE CompanyID = @CompanyID AND ExpiryStatus = 0
         `;
-      } else if (systemRoleId === 0) {
-        console.log("System Role is 0: Fetching the specific branch based on the token");
-        // If systemRoleId is 0, fetch only the branch that is in the token
-        branchesQuery = `
+    } else if (systemRoleId === 0) {
+      console.log(
+        "System Role is 0: Fetching the specific branch based on the token"
+      );
+      // If systemRoleId is 0, fetch only the branch that is in the token
+      branchesQuery = `
           SELECT BranchID, BranchName 
           FROM DashBoardCompanyDetails.dbo.Branch_Log 
           WHERE CompanyID = @CompanyID AND BranchID = @BranchID AND ExpiryStatus = 0
         `;
-        queryParams = { ...queryParams, BranchID: branchId };
-      } else {
-        console.log("Unhandled systemRoleId: Returning empty branches");
-        return res.json({ branches: [] });
-      }
-  
-      // Log the query and parameters
-      console.log("Executing query:", branchesQuery);
-      console.log("Query parameters:", queryParams);
-  
-      // Execute the query
-      const result = await request
-        .input("CompanyID", mssql.VarChar, queryParams.CompanyID)
-        .input("BranchID", mssql.VarChar, queryParams.BranchID || null)
-        .query(branchesQuery);
-  
-      console.log("Query executed successfully. Result:", result.recordset);
-  
-      const branchesList = result.recordset;
-  
-      // Respond with the branch list
-      res.json({
-        branches: branchesList.length > 0 ? branchesList : [],
-      });
-    } catch (error) {
-      console.error("Error fetching branches:", error);
-      res.status(500).json({ message: "Internal server error" });
+      queryParams = { ...queryParams, BranchID: branchId };
+    } else {
+      console.log("Unhandled systemRoleId: Returning empty branches");
+      return res.json({ branches: [] });
     }
-  };
-  
-  
+
+    // Log the query and parameters
+    console.log("Executing query:", branchesQuery);
+    console.log("Query parameters:", queryParams);
+
+    // Execute the query
+    const result = await request
+      .input("CompanyID", mssql.VarChar, queryParams.CompanyID)
+      .input("BranchID", mssql.VarChar, queryParams.BranchID || null)
+      .query(branchesQuery);
+
+    console.log("Query executed successfully. Result:", result.recordset);
+
+    const branchesList = result.recordset;
+
+    // Respond with the branch list
+    res.json({
+      branches: branchesList.length > 0 ? branchesList : [],
+    });
+  } catch (error) {
+    console.error("Error fetching branches:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 // Controller: Get Sales Details with stationId/branchId filter
 export const getSalesDetails = async (req, res) => {
   const { date, branchId } = req.query;
-console.log(branchId,"ith sales");
+  console.log(branchId, "ith sales");
   const expiryCheck = checkExpiryStatus(req);
 
   if (expiryCheck.expired) {
@@ -161,6 +171,7 @@ console.log(branchId,"ith sales");
 
   try {
     const { dbSchemaName, stationId } = getDbSchemaNameFromToken(req);
+    console.log(dbSchemaName);
     // console.log(dbSchemaName,stationId,"ith veruundo?");
     const selectedBranchId = branchId || stationId; // Use the passed branchId or fallback to stationId
 
@@ -168,23 +179,20 @@ console.log(branchId,"ith sales");
     const request = dashboardPool.request();
 
     const result = await request.query(`
-            SELECT 
-                COUNT(*) AS totalSalesCount,
-                COUNT(CASE WHEN Amount < 0 THEN 1 END) AS positiveAmountSalesCount,
-                SUM(CashAmount) AS totalCashAmount,
-                SUM(CreditAmount) AS totalCreditAmount,
-                SUM(CreditCardAmount) AS totalCreditCardAmount
-            FROM ${dbSchemaName}.SalesMaster
+            SELECT  COUNT(*) AS totalSalesCount,COUNT(CASE WHEN Amount < 0 THEN 1 END) AS positiveAmountSalesCount,SUM(CashAmount) AS totalCashAmount,SUM(OnlinePaymentAmount) AS Online,SUM(CreditAmount) AS totalCreditAmount,SUM(CreditCardAmount) AS totalCreditCardAmount
+,sum(Amount) as TotalSaleAmount FROM ${dbSchemaName}.SalesMaster
             WHERE BillTime >= '${formattedStartDate}' 
               AND BillTime < '${formattedEndDate}'
               AND StationID = '${selectedBranchId}'  -- Filter by stationId or branchId
         `);
-
+   
     const {
       totalSalesCount,
       positiveAmountSalesCount,
       totalCashAmount,
       totalCreditAmount,
+      Online,
+      TotalSaleAmount,
       totalCreditCardAmount,
     } = result.recordset[0];
 
@@ -193,6 +201,8 @@ console.log(branchId,"ith sales");
       positiveAmountSalesCount,
       totalCashAmount,
       totalCreditAmount,
+      Online,
+      TotalSaleAmount,
       totalCreditCardAmount,
     });
   } catch (err) {
@@ -318,7 +328,7 @@ export const getAreaSales = async (req, res) => {
             GROUP BY 
                 AreaID, AreaName
         `);
-console.log(`
+    console.log(`
             SELECT 
                 AreaID,
                 AreaName,
@@ -333,12 +343,12 @@ console.log(`
             GROUP BY 
                 AreaID, AreaName
         `);
-        const areaSalesData = result.recordset.map((record) => ({
-          areaId: record.AreaID,
-          areaName: record.AreaName,
-          totalSales: record.TotalSales,
-        }));
-        console.log(areaSalesData);
+    const areaSalesData = result.recordset.map((record) => ({
+      areaId: record.AreaID,
+      areaName: record.AreaName,
+      totalSales: record.TotalSales,
+    }));
+    console.log(areaSalesData);
     res.json(areaSalesData);
   } catch (err) {
     console.error("SQL error", err);

@@ -36,8 +36,10 @@ async function startServer() {
     app.use("/", loginRoute);
     app.use("/", counterRoutes);
     app.use("/", reportRoutes);
-    app.listen(port, () => {
-      console.log(`Server is running on http://localhost:${port}`);
+    
+    // Bind to 0.0.0.0 to allow external access
+    app.listen(port, "0.0.0.0", () => {
+      console.log(`Server is running on http://0.0.0.0:${port}`);
     });
   } catch (error) {
     console.error("Failed to connect to databases:", error);
