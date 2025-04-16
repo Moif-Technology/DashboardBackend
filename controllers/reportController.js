@@ -38,6 +38,7 @@ export const getItemSaleReport = async (req, res) => {
         GroupName
     `;
 
+   
     // Execute the group query
     const groupResult = await request.query(groupQuery);
     const groupNames = groupResult.recordset.map((record) => record.GroupName);
@@ -52,7 +53,7 @@ export const getItemSaleReport = async (req, res) => {
     let itemSaleReport = [];
 
     if (fromDate && toDate) {
-      const formattedFromDate = `${fromDate} 05:00:00 AM`; // Assuming fromDate is in 'YYYY-MM-DD' format
+      const formattedFromDate = `${fromDate} 05:00:00 AM`; 
       console.log(`Formatted fromDate for query: ${formattedFromDate}`);
 
       // Increment the toDate by one day and set it to 5:00 AM for the query
@@ -81,7 +82,22 @@ export const getItemSaleReport = async (req, res) => {
           AND sm.BillTime < @ToDate 
           AND sc.StationID = @BranchID
       `;
-
+console.log(`
+        SELECT 
+          ShortDescription, 
+          GroupName, 
+          SUM(Qty) AS Qty, 
+          ROUND(SUM(LineTotal), 2) AS TotalAmount
+        FROM 
+          ${dbSchemaName}.SalesChild sc
+        JOIN 
+          ${dbSchemaName}.SalesMaster sm ON sc.SalesID = sm.SalesID
+        WHERE 
+          sc.LineTotal <> 0 
+          AND sm.BillTime >= @FromDate 
+          AND sm.BillTime < @ToDate 
+          AND sc.StationID = @BranchID
+      `,"report query");
       // If groupName is provided, add the groupName filter
       if (groupName) {
         reportQuery += ` AND sc.GroupName = @GroupName`; // Add GroupName filter
@@ -91,10 +107,11 @@ export const getItemSaleReport = async (req, res) => {
       // Add GROUP BY clause to the query
       reportQuery += `
         GROUP BY 
-          ShortDescription, GroupName
+          ShortDescription, GroupName 
       `;
 
-      // Prepare SQL request inputs
+
+      // Prepare SQL request inputs 
       request.input("FromDate", formattedFromDate).input("ToDate", formattedToDate);
 
       // Execute the report query
@@ -187,3 +204,89 @@ export const getGroupReport = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+export const fastForwardItems = async (req,res) => {
+  console.log("Ivide ethiyo????????********");
+  try {
+    // Step 1: Check if the token has expired
+    const expiryCheck = checkExpiryStatus(req);
+    if (expiryCheck.expired) {
+      return res.status(403).json(expiryCheck);
+    }
+
+    // Step 2: Extract dbSchemaName and stationId from the token
+    const { dbSchemaName, stationId } = getDbSchemaNameFromToken(req);
+
+    // Step 3: Extract query parameters (branchId, fromDate, toDate, groupName)
+    const { branchId, fromDate, toDate } = req.query;
+    console.log(req.query);
+    const selectedBranchId = branchId || stationId; // Use passed branchId or fallback to stationId
+    // Step 4: Fetch Group Names associated with the branch
+    const dashboardPool = await connectToDashboard();
+    const request = dashboardPool.request();
+
+    // Declare the BranchID parameter only once
+    request.input("BranchID", selectedBranchId);
+
+    // Step 5: Fetch the item sale report, optionally filter by groupName
+    let itemSaleReport = [];
+
+    if (fromDate && toDate) {
+      const formattedFromDate = `${fromDate} 05:00:00 AM`; // Assuming fromDate is in 'YYYY-MM-DD' format
+      console.log(`Formatted fromDate for query: ${formattedFromDate}`);
+
+      // Increment the toDate by one day and set it to 5:00 AM for the query
+      let nextDay = new Date(toDate);
+      nextDay.setDate(nextDay.getDate() + 1); // Increment nextDay by 1 day
+      const formattedToDate = `${nextDay.getFullYear()}-${(nextDay.getMonth() + 1)
+        .toString()
+        .padStart(2, "0")}-${nextDay.getDate().toString().padStart(2, "0")} 05:00:00 AM`;
+      
+      console.log(`Original toDate: ${toDate}, Incremented toDate for query: ${formattedToDate}`);
+
+      // Base SQL query for the report
+      let reportQuery = `
+        SELECT TOP(20)
+          ShortDescription, 
+          GroupName, 
+          SUM(Qty) AS Qty, 
+          ROUND(SUM(LineTotal), 2) AS TotalAmount
+        FROM 
+          ${dbSchemaName}.SalesChild sc
+        JOIN 
+          ${dbSchemaName}.SalesMaster sm ON sc.SalesID = sm.SalesID
+        WHERE 
+          sc.LineTotal <> 0 
+          AND sm.BillTime >= @FromDate 
+          AND sm.BillTime < @ToDate 
+          AND sc.StationID = @BranchID GROUP BY 
+  ShortDescription, 
+  GroupName
+ORDER BY 
+  SUM(Qty) DESC
+      `;
+
+      
+
+
+
+      // Prepare SQL request inputs 
+      request.input("FromDate", formattedFromDate).input("ToDate", formattedToDate);
+
+      // Execute the report query
+      const reportResult = await request.query(reportQuery);
+      itemSaleReport = reportResult.recordset;
+    }
+console.log(itemSaleReport,"Result undo?");
+
+    // Step 6: Return the group names and the item sale report (if applicable)
+    res.status(200).json({
+    
+      data: itemSaleReport, // Send the item sale report (if available)
+      message: "Group names and item sale report fetched successfully",
+    });
+  } catch (error) {
+    console.error("Error fast forwarding items:", error);
+  }
+}

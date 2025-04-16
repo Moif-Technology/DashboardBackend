@@ -214,74 +214,98 @@ export const getSalesDetails = async (req, res) => {
 
 // Controller: Get Monthly Sales with stationId/branchId filter
 export const getMonthlySales = async (req, res) => {
-  const { branchId } = req.query; // Accept branchId as a query parameter
+  const { branchId, year, month } = req.query; // Accept branchId, year, and month as query parameters
+  console.log(req.query);
   const expiryCheck = checkExpiryStatus(req);
   if (expiryCheck.expired) {
     return res.status(403).json(expiryCheck);
   }
 
   try {
-    const year = 2024;
     const { dbSchemaName, stationId } = getDbSchemaNameFromToken(req);
     const selectedBranchId = branchId || stationId; // Use the passed branchId or fallback to stationId
 
     const dashboardPool = await connectToDashboard();
     const request = dashboardPool.request();
-    // console.log(dashboardPool);
-    // console.log("222");
-    const result = await request.query(`
-            SELECT 
-                YEAR(billdate) AS Year,
-                MONTH(billdate) AS Month,
-                SUM(amount) AS TotalAmount
-            FROM 
-                ${dbSchemaName}.SalesMaster
-            WHERE 
-                YEAR(billdate) = ${year}
-              AND StationID = '${selectedBranchId}'  -- Filter by stationId or branchId
-            GROUP BY 
-                YEAR(billdate), 
-                MONTH(billdate)
-            ORDER BY 
-                Month
-        `);
-    // console.log(dashboardPool);
-    // console.log(`
-    //     SELECT
-    //         YEAR(billdate) AS Year,
-    //         MONTH(billdate) AS Month,
-    //         SUM(amount) AS TotalAmount
-    //     FROM
-    //         ${dbSchemaName}.SalesMaster
-    //     WHERE
-    //         YEAR(billdate) = ${year}
-    //       AND StationID = '${selectedBranchId}'  -- Filter by stationId or branchId
-    //     GROUP BY
-    //         YEAR(billdate),
-    //         MONTH(billdate)
-    //     ORDER BY
-    //         Month
-    // `,"Year quer?");
 
-    const data = result.recordset;
-    const formattedData = [];
+    let query;
+    let formattedData = [];
 
-    for (let month = 1; month <= 12; month++) {
-      const found = data.find((d) => d.Month === month);
-      formattedData.push({
-        Year: year,
-        Month: month,
-        TotalAmount: found ? found.TotalAmount : 0,
-      });
+    if (month) {
+      // If month is passed, fetch data grouped by day
+      query = `
+        SELECT 
+          BillDate AS Date,
+          SUM(amount) AS TotalAmount
+        FROM 
+          ${dbSchemaName}.SalesMaster
+        WHERE 
+          YEAR(BillDate) = ${year} 
+          AND MONTH(BillDate) = ${month}
+          AND StationID = '${selectedBranchId}'
+        GROUP BY 
+          BillDate
+        ORDER BY 
+          BillDate
+      `;
+
+      const result = await request.query(query);
+      const data = result.recordset;
+console.log(data,"Year");
+      // Check if data is empty and return default values
+      if (data.length === 0) {
+        formattedData = [];
+      } else {
+        formattedData = data.map((d) => ({
+          Date: d.Date,
+          TotalAmount: d.TotalAmount,
+        }));
+      }
+    } else {
+      // If only the year is passed, fetch data grouped by month
+      query = `
+        SELECT 
+          YEAR(BillDate) AS Year,
+          MONTH(BillDate) AS Month,
+          SUM(amount) AS TotalAmount
+        FROM 
+          ${dbSchemaName}.SalesMaster
+        WHERE 
+          YEAR(BillDate) = ${year}
+          AND StationID = '${selectedBranchId}'
+        GROUP BY 
+          YEAR(BillDate), 
+          MONTH(BillDate)
+        ORDER BY 
+          Month
+      `;
+
+      const result = await request.query(query);
+      const data = result.recordset;
+console.log(data,"Month");
+      // Check if data is empty and return default values
+      if (data.length === 0) {
+        formattedData = [];
+      } else {
+        for (let month = 1; month <= 12; month++) {
+          const found = data.find((d) => d.Month === month);
+          formattedData.push({
+            Year: year,
+            Month: month,
+            TotalAmount: found ? found.TotalAmount : 0,
+          });
+        }
+      }
     }
 
     res.status(200).json(formattedData);
   } catch (err) {
-    console.log(err, "error");
     console.error("SQL error", err);
     res.status(500).send("Server Error");
   }
 };
+
+
 
 // Controller: Get Area Sales with stationId/branchId filter
 export const getAreaSales = async (req, res) => {
